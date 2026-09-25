@@ -1,0 +1,19 @@
+{
+  "name": "mywrap-experience-tracking",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "First-party event tracking for MyWrap: one action stream behind the live pulse, missions, the Wrap, the organiser report and the CRM handoff.",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "demo": "node --experimental-strip-types demo/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^5.6.0"
+  }
+}
