@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Share2, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { Share2, Plus, Trash2, ArrowRight, ArrowLeft, Sparkles, Volume2, VolumeX, Loader2, Lightbulb } from 'lucide-react';
 
 export default function WrappedGenerator() {
   const [step, setStep] = useState('landing');
@@ -11,6 +11,9 @@ export default function WrappedGenerator() {
   const [selectedMusic, setSelectedMusic] = useState('');
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [audioElement, setAudioElement] = useState(null);
+  const [analysisContext, setAnalysisContext] = useState('');
+  const [analyzing, setAnalyzing] = useState({});
+  const [analysisError, setAnalysisError] = useState('');
 
   const musicTracks = [
     { id: 'none', name: 'No Music', url: '' },
@@ -41,6 +44,55 @@ export default function WrappedGenerator() {
     const newStats = [...stats];
     newStats[index][field] = value;
     setStats(newStats);
+  };
+
+  const setStatExplanation = (index, explanation) => {
+    setStats(prev => prev.map((s, i) => (i === index ? { ...s, explanation } : s)));
+  };
+
+  // Uses Claude's in-artifact completion API to explain what a single feedback result means
+  const explainResult = async (index) => {
+    const stat = stats[index];
+    if (!window.claude || !window.claude.complete) {
+      setAnalysisError('AI analysis is only available when this runs inside Claude. You can still write explanations by hand.');
+      return;
+    }
+
+    setAnalysisError('');
+    setAnalyzing(prev => ({ ...prev, [index]: true }));
+
+    const otherResults = stats
+      .filter((s, i) => i !== index && s.label && s.value)
+      .map(s => `- ${s.label}: ${s.value}`)
+      .join('\n');
+
+    const prompt = `You are helping someone make sense of feedback results for "${title || 'their project'}"${dateRange ? ` (${dateRange})` : ''}.
+${analysisContext ? `\nContext about the feedback: ${analysisContext}\n` : ''}
+Question: ${stat.label}
+Result: ${stat.value}
+
+Other results from the same feedback, for context:
+${otherResults || '(none)'}
+
+Write a short, plain-language explanation of this result: what it tells us, why it might have come out this way, and one practical takeaway. Keep it to 2-3 sentences and under 60 words. Do not invent numbers that are not in the results. Reply with the explanation only, with no preamble or formatting.`;
+
+    try {
+      const response = await window.claude.complete(prompt);
+      setStatExplanation(index, response.trim());
+    } catch (e) {
+      console.log('Analysis failed:', e);
+      setAnalysisError('Could not generate an explanation. Please try again.');
+    } finally {
+      setAnalyzing(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
+  const explainAllResults = async () => {
+    for (let i = 0; i < stats.length; i++) {
+      if (stats[i].label && stats[i].value) {
+        await explainResult(i);
+      }
+    }
   };
 
   const handleMusicSelect = (musicId) => {
@@ -87,6 +139,8 @@ export default function WrappedGenerator() {
     setDateRange('');
     setStats([{ label: '', value: '' }]);
     setSelectedMusic('');
+    setAnalysisContext('');
+    setAnalysisError('');
     setStep('input');
     setCurrentSlide(0);
     
@@ -377,12 +431,127 @@ export default function WrappedGenerator() {
             </div>
 
             <button
+              onClick={() => setStep('analysis')}
+              disabled={!stats.some(s => s.label && s.value)}
+              className="w-full flex items-center justify-center gap-3 px-8 py-5 bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:text-white/40 disabled:cursor-not-allowed text-white font-black rounded-xl transition-all text-xl border-2 border-white/20 uppercase tracking-wide"
+            >
+              <Lightbulb size={22} />
+              Analyze Results
+            </button>
+
+            <button
               onClick={generateWrapped}
               disabled={!title || !stats.some(s => s.label && s.value)}
               className="w-full px-8 py-5 bg-white hover:bg-white/90 disabled:bg-white/20 disabled:cursor-not-allowed text-black font-black rounded-xl transition-all text-xl shadow-xl hover:shadow-2xl disabled:shadow-none hover:scale-[1.02] uppercase tracking-wide"
             >
               Generate My Wrapped
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Analysis Page
+  if (step === 'analysis') {
+    const isAnyAnalyzing = Object.values(analyzing).some(Boolean);
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-950 relative overflow-hidden p-6 flex items-center justify-center">
+        <LavaLampBackground variant="cyan" />
+
+        <div className="absolute inset-0 opacity-[0.10]" style={{
+          backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'2.5\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
+          backgroundSize: '200px 200px'
+        }}></div>
+
+        <div className="relative z-10 max-w-2xl w-full bg-black/40 backdrop-blur-2xl rounded-3xl p-10 shadow-2xl border border-white/20">
+          <h1 className="text-5xl font-black text-white mb-3 tracking-tight">Analyze Results</h1>
+          <p className="text-white/80 mb-10 text-lg">Turn each feedback result into a plain-language explanation. Explanations show up on your wrapped slides.</p>
+
+          <div className="space-y-8">
+            <div className="bg-white/5 rounded-2xl p-6 border border-white/10">
+              <label className="block text-white mb-3 font-bold text-lg uppercase tracking-wide">Context</label>
+              <textarea
+                value={analysisContext}
+                onChange={(e) => setAnalysisContext(e.target.value)}
+                placeholder="Who gave the feedback and when? (e.g., Post-event survey, 84 attendees, launch party)"
+                rows={2}
+                className="w-full px-5 py-4 rounded-xl bg-white/10 border-2 border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent backdrop-blur-sm font-medium resize-none"
+              />
+              <p className="text-white/60 text-sm mt-2">Optional, but helps the AI give better explanations</p>
+            </div>
+
+            <button
+              onClick={explainAllResults}
+              disabled={isAnyAnalyzing}
+              className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-white/10 hover:bg-white/20 disabled:bg-white/5 disabled:cursor-not-allowed rounded-xl text-white transition-colors border-2 border-white/20 font-bold uppercase tracking-wide"
+            >
+              {isAnyAnalyzing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
+              Explain All Results
+            </button>
+
+            {analysisError && (
+              <div className="px-5 py-4 rounded-xl bg-red-500/20 border-2 border-red-500/40 text-white font-medium">
+                {analysisError}
+              </div>
+            )}
+
+            {stats.map((stat, index) => {
+              if (!stat.label || !stat.value) return null;
+
+              return (
+                <div key={index} className="bg-white/5 rounded-2xl p-6 border border-white/10 space-y-4">
+                  <div>
+                    <div className="text-white/60 text-sm font-bold uppercase tracking-wider mb-1">Question</div>
+                    <div className="text-white text-xl font-bold">{stat.label}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-white/60 text-sm font-bold uppercase tracking-wider mb-1">Result</div>
+                    <div className="text-white text-3xl font-black tracking-tight break-words">{stat.value}</div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-white/60 text-sm font-bold uppercase tracking-wider">Explanation</div>
+                      <button
+                        onClick={() => explainResult(index)}
+                        disabled={analyzing[index]}
+                        className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-white/90 disabled:bg-white/20 disabled:text-white/60 disabled:cursor-not-allowed rounded-lg text-black font-bold text-sm transition-colors"
+                      >
+                        {analyzing[index] ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                        {analyzing[index] ? 'Thinking...' : stat.explanation ? 'Regenerate' : 'Explain with AI'}
+                      </button>
+                    </div>
+                    <textarea
+                      value={stat.explanation || ''}
+                      onChange={(e) => setStatExplanation(index, e.target.value)}
+                      placeholder="What does this result mean? Generate one with AI or write your own."
+                      rows={3}
+                      className="w-full px-5 py-4 rounded-xl bg-white/10 border-2 border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/50 focus:border-transparent backdrop-blur-sm font-medium resize-none"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setStep('input')}
+                className="flex items-center justify-center gap-2 px-6 py-5 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors border-2 border-white/20 font-bold uppercase tracking-wide"
+              >
+                <ArrowLeft size={20} />
+                Edit
+              </button>
+              <button
+                onClick={generateWrapped}
+                disabled={!title || !stats.some(s => s.label && s.value)}
+                className="flex-1 px-8 py-5 bg-white hover:bg-white/90 disabled:bg-white/20 disabled:cursor-not-allowed text-black font-black rounded-xl transition-all text-xl shadow-xl hover:shadow-2xl disabled:shadow-none hover:scale-[1.02] uppercase tracking-wide"
+              >
+                Generate My Wrapped
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -452,6 +621,11 @@ export default function WrappedGenerator() {
                   <div className="text-white">
                     {formatValue(stat.value)}
                   </div>
+                  {stat.explanation && (
+                    <p className="text-white/80 text-lg font-medium leading-relaxed max-w-sm mx-auto pt-4">
+                      {stat.explanation}
+                    </p>
+                  )}
                 </div>
 
                 {/* Bottom accent */}
