@@ -232,42 +232,7 @@ export default function WrappedGenerator() {
 
   // Landing Page
   if (step === 'landing') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-950 via-indigo-950 to-purple-950 relative overflow-hidden flex items-center justify-center p-6">
-        <LavaLampBackground />
-
-        {/* Fine grain texture overlay */}
-        <div className="absolute inset-0 opacity-[0.10]" style={{
-          backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'2.5\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\'/%3E%3C/svg%3E")',
-          backgroundSize: '200px 200px'
-        }}></div>
-
-        <div className="relative z-10 text-center max-w-3xl">
-          <div className="mb-12 inline-block">
-            <div className="relative">
-              <Sparkles className="w-20 h-20 text-white animate-pulse" />
-              <div className="absolute inset-0 blur-xl bg-white/30 rounded-full animate-pulse"></div>
-            </div>
-          </div>
-          
-          <h1 className="text-8xl font-black text-white mb-8 tracking-tighter">
-            Wrapped
-          </h1>
-          
-          <p className="text-2xl text-white/90 mb-16 leading-relaxed font-medium">
-            Create a custom wrapped for your trip, fitness achievements, reading list—anything worth sharing
-          </p>
-          
-          <button
-            onClick={() => setStep('input')}
-            className="group px-12 py-6 bg-white hover:bg-white/90 text-black font-black rounded-full transition-all text-xl shadow-2xl hover:shadow-white/30 hover:scale-105 uppercase tracking-wide"
-          >
-            Get Started
-            <ArrowRight className="inline-block ml-3 group-hover:translate-x-2 transition-transform" size={24} />
-          </button>
-        </div>
-      </div>
-    );
+    return <LandingPage onStart={() => setStep('input')} />;
   }
 
   // Input Page
@@ -504,6 +469,169 @@ export default function WrappedGenerator() {
           </button>
         )}
       </div>
+    </div>
+  );
+}
+// ---------- Landing page ----------
+
+// Test photos live in public/mywrap (1.jpg … 6.jpg). If a file is missing,
+// the matching fallback URL is used so the landing never shows a blank star.
+const LANDING_PHOTOS = [1, 2, 3, 4, 5, 6].map((n) => `/mywrap/${n}.jpg`);
+const FALLBACK_PHOTOS = [
+  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=1200&q=75',
+  'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200&q=75',
+  'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1200&q=75',
+  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=75',
+  'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1200&q=75',
+  'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200&q=75',
+];
+
+const TYPED_WORDS = ['events', 'parties', 'pop ups', 'vacations', 'activations'];
+
+// Jagged starburst, drawn in a 100x100 box.
+const STAR_POINTS = [
+  [50, 2], [60, 30], [88, 14], [72, 42], [98, 55], [68, 62],
+  [80, 94], [52, 74], [30, 97], [34, 66], [3, 70], [26, 48],
+  [8, 20], [38, 32],
+];
+const STAR_PATH = 'M' + STAR_POINTS.map(([x, y]) => `${x} ${y}`).join(' L') + ' Z';
+
+function TypedWord() {
+  const [wordIndex, setWordIndex] = useState(0);
+  const [text, setText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const word = TYPED_WORDS[wordIndex];
+    let delay = deleting ? 55 : 110;
+    if (!deleting && text === word) delay = 1600;
+    if (deleting && text === '') delay = 300;
+
+    const timer = setTimeout(() => {
+      if (!deleting && text === word) {
+        setDeleting(true);
+      } else if (deleting && text === '') {
+        setDeleting(false);
+        setWordIndex((wordIndex + 1) % TYPED_WORDS.length);
+      } else {
+        setText(deleting ? word.slice(0, text.length - 1) : word.slice(0, text.length + 1));
+      }
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [text, deleting, wordIndex]);
+
+  return (
+    <span className="whitespace-nowrap">
+      {text}
+      <span className="landing-caret" aria-hidden="true" />
+    </span>
+  );
+}
+
+// A star-shaped hole cut in white paper, with a photo slideshow underneath.
+function StarCutout({ className, offset = 0, interval = 4000, rotate = 0 }) {
+  const [index, setIndex] = useState(offset % LANDING_PHOTOS.length);
+  const [prev, setPrev] = useState(null);
+  const [failed, setFailed] = useState({});
+  const filterId = `paper-shadow-${offset}`;
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((i) => {
+        setPrev(i);
+        return (i + 1) % LANDING_PHOTOS.length;
+      });
+    }, interval);
+    return () => clearInterval(timer);
+  }, [interval]);
+
+  return (
+    <div className={`absolute pointer-events-none ${className}`} style={{ transform: `rotate(${rotate}deg)` }}>
+      {/* Photos, clipped to the star */}
+      <svg width="0" height="0" className="absolute">
+        <defs>
+          <clipPath id={`star-clip-${offset}`} clipPathUnits="objectBoundingBox" transform="scale(0.01)">
+            <path d={STAR_PATH} />
+          </clipPath>
+        </defs>
+      </svg>
+      <div className="absolute inset-0 overflow-hidden bg-neutral-200" style={{ clipPath: `url(#star-clip-${offset})` }}>
+        {LANDING_PHOTOS.map((src, i) => {
+          const state = i === index ? 'active' : i === prev ? 'leaving' : 'waiting';
+          return (
+            <img
+              key={src}
+              src={failed[i] ? FALLBACK_PHOTOS[i] : src}
+              onError={() => setFailed((f) => (f[i] ? f : { ...f, [i]: true }))}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover"
+              style={{
+                transform: `rotate(${-rotate}deg) scale(1.25) translateX(${state === 'active' ? '0%' : state === 'leaving' ? '-10%' : '10%'})`,
+                opacity: state === 'active' ? 1 : 0,
+                transition: state === 'waiting' ? 'none' : 'transform 1.4s cubic-bezier(.22,.61,.36,1), opacity 1.4s ease',
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* The paper: white sheet with a star-shaped hole whose edge casts a shadow onto the photo */}
+      <svg className="absolute inset-0 w-full h-full overflow-hidden" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="1.2" dy="1.8" stdDeviation="1.6" floodColor="#000" floodOpacity="0.45" />
+          </filter>
+        </defs>
+        <path
+          d={`M-10 -10 H110 V110 H-10 Z ${STAR_PATH}`}
+          fill="#fafaf9"
+          fillRule="evenodd"
+          filter={`url(#${filterId})`}
+        />
+      </svg>
+    </div>
+  );
+}
+
+function LandingPage({ onStart }) {
+  return (
+    <div className="min-h-screen bg-stone-50 text-neutral-900 relative overflow-hidden flex flex-col">
+      <style>{`
+        .landing-caret { display:inline-block; width:0.06em; height:0.9em; margin-left:0.06em; background:currentColor; vertical-align:-0.08em; animation: landing-blink 1s steps(1) infinite; }
+        @keyframes landing-blink { 50% { opacity: 0; } }
+      `}</style>
+
+      {/* Paper stars (behind the content) */}
+      <StarCutout className="w-[34vw] h-[34vw] max-w-[440px] max-h-[440px] -left-[8vw] top-[10vh]" offset={0} interval={4200} rotate={-8} />
+      <StarCutout className="w-[40vw] h-[40vw] max-w-[520px] max-h-[520px] -right-[8vw] bottom-[-6vh]" offset={3} interval={4200} rotate={14} />
+
+      {/* Nav bar */}
+      <nav className="relative z-20 flex items-center justify-between px-6 md:px-12 py-5 border-b border-neutral-200 bg-stone-50/80 backdrop-blur">
+        <div className="text-xl font-black tracking-tight">mywrap</div>
+        <div className="flex items-center gap-6 text-sm font-medium text-neutral-600">
+          <a href="#how" className="hidden sm:inline hover:text-neutral-900">How it works</a>
+          <a href="#examples" className="hidden sm:inline hover:text-neutral-900">Examples</a>
+          <button onClick={onStart} className="px-4 py-2 rounded-full bg-neutral-900 text-white hover:bg-neutral-700 transition-colors">
+            Start now
+          </button>
+        </div>
+      </nav>
+
+      {/* Headline + CTA */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6">
+        <h1 className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tighter leading-[1.05]">
+          wrap up your
+          <br />
+          <span className="inline-block min-h-[1.1em]"><TypedWord /></span>
+        </h1>
+        <button
+          onClick={onStart}
+          className="group mt-12 px-10 py-5 bg-neutral-900 hover:bg-neutral-700 text-white font-bold rounded-full transition-all text-lg shadow-xl hover:scale-105"
+        >
+          Start now
+          <ArrowRight className="inline-block ml-3 group-hover:translate-x-1 transition-transform" size={20} />
+        </button>
+      </main>
     </div>
   );
 }
